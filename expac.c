@@ -495,7 +495,7 @@ static alpm_list_t *checklist(alpm_pkg_t *pkg) {
 
 static int print_pkg(alpm_pkg_t *pkg, const char *format) {
   const char *f, *end;
-  alpm_list_t *tmp;
+  alpm_list_t *tmp = NULL;
   char fmt[64], buf[64];
   int len, out = 0;
 
