@@ -27,6 +27,7 @@
 #define _GNU_SOURCE
 #include <alpm.h>
 #include <ctype.h>
+#include <errno.h>
 #include <getopt.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -38,7 +39,7 @@
 #define DEFAULT_DELIM        "\n"
 #define DEFAULT_LISTDELIM    "  "
 #define DEFAULT_TIMEFMT      "%c"
-#define FORMAT_TOKENS        "BCDEGLNOPRSabdhmnprsuvw%"
+#define FORMAT_TOKENS        "BCDEGLMNOPRSabdhmnprsuvw%"
 #define FORMAT_TOKENS_LOCAL  "ilFw"
 #define FORMAT_TOKENS_SYNC   "fgk"
 #define ESCAPE_TOKENS        "\"\\abefnrtv"
@@ -436,8 +437,70 @@ static int print_filelist(alpm_filelist_t *filelist) {
   return out;
 }
 
+
+static const char *get_backup_file_status(const char *root,
+		const alpm_backup_t *backup)
+{
+	char path[PATH_MAX];
+	const char *ret;
+
+	snprintf(path, PATH_MAX, "%s%s", root, backup->name);
+
+	/* if we find the file, calculate checksums, otherwise it is missing */
+	if(access(path, R_OK) == 0) {
+		char *md5sum = alpm_compute_md5sum(path);
+
+		if(md5sum == NULL) {
+			return NULL;
+		}
+
+		/* if checksums don't match, file has been modified */
+		if(strcmp(md5sum, backup->hash) != 0) {
+			ret = "MODIFIED";
+		} else {
+			ret = "UNMODIFIED";
+		}
+		free(md5sum);
+	} else {
+		switch(errno) {
+			case EACCES:
+				ret = "UNREADABLE";
+				break;
+			case ENOENT:
+				ret = "MISSING";
+				break;
+			default:
+				ret = "UNKNOWN";
+		}
+	}
+	return ret;
+}
+
+static alpm_list_t *checklist(alpm_pkg_t *pkg) {
+	alpm_list_t *i, *j, *ret;
+	const char *root = "/";
+	j = calloc(sizeof(alpm_list_t), 100);
+	ret = (alpm_list_t *)NULL;
+	if (alpm_pkg_get_backup(pkg)) {
+		for(i = alpm_pkg_get_backup(pkg); i; i = alpm_list_next(i)) {
+			const alpm_backup_t *backup = i->data;
+			if (!backup->hash) {
+				continue;
+			}
+			if (strcmp(get_backup_file_status(root, backup), "MODIFIED") == 0) {
+				j->data = alpm_list_add(j->data, i->data);
+			}
+		}
+		//ret = alpm_list_copy_data(j, alpm_list_count(j));
+		ret = (alpm_list_t *)alpm_list_copy(j->data);
+	}
+	free(j);
+	return ret;
+}
+
 static int print_pkg(alpm_pkg_t *pkg, const char *format) {
   const char *f, *end;
+  alpm_list_t *tmp;
   char fmt[64], buf[64];
   int len, out = 0;
 
@@ -554,6 +617,12 @@ static int print_pkg(alpm_pkg_t *pkg, const char *format) {
         case 'B': /* backup */
           out += print_list(alpm_pkg_get_backup(pkg), alpm_backup_get_name, shortdeps);
           break;
+		case 'M': /* modified */
+		  tmp = checklist(pkg);
+		  if(tmp != NULL) {
+			  out += print_list(tmp, alpm_backup_get_name, shortdeps);
+		  }
+		  break;
         case '%':
           fputc('%', stdout);
           out++;
