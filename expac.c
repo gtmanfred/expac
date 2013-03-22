@@ -477,10 +477,8 @@ static const char *get_backup_file_status(const char *root,
 }
 
 static alpm_list_t *checklist(alpm_pkg_t *pkg) {
-	alpm_list_t *i, *j, *ret;
+	alpm_list_t *i, *j = NULL;
 	const char *root = "/";
-	j = calloc(sizeof(alpm_list_t), 100);
-	ret = (alpm_list_t *)NULL;
 	if (alpm_pkg_get_backup(pkg)) {
 		for(i = alpm_pkg_get_backup(pkg); i; i = alpm_list_next(i)) {
 			const alpm_backup_t *backup = i->data;
@@ -488,14 +486,11 @@ static alpm_list_t *checklist(alpm_pkg_t *pkg) {
 				continue;
 			}
 			if (strcmp(get_backup_file_status(root, backup), "MODIFIED") == 0) {
-				j->data = alpm_list_add(j->data, i->data);
+				j = alpm_list_add(j, i->data);
 			}
 		}
-		//ret = alpm_list_copy_data(j, alpm_list_count(j));
-		ret = (alpm_list_t *)alpm_list_copy(j->data);
 	}
-	free(j);
-	return ret;
+	return j;
 }
 
 static int print_pkg(alpm_pkg_t *pkg, const char *format) {
@@ -648,6 +643,8 @@ static int print_pkg(alpm_pkg_t *pkg, const char *format) {
   if (out > 0) {
     print_escaped(delim);
   }
+
+  alpm_list_free(tmp);
 
   return !out;
 }
